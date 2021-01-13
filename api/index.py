@@ -1,4 +1,8 @@
+
 from collections import defaultdict
+
+import json
+
 
 from requests import get
 from jinja2 import Template
@@ -141,13 +145,18 @@ def read_abi_from_address(address):
   json_response = get(url).json()
   return loads(json_response['result'])
 
-def read_contract_from_address(address):
-  a = address.lower()
-  k = ETHERSCAN_API_KEY
-  url = f'https://api.etherscan.io/api?module=contract&action=getsourcecode&address={a}&apikey={k}'
-  json_response = get(url).json()
-  contract = [x for x in json_response['result'] if 'ContractName' in x][0]
-  return contract
+def read_contract(contract):
+  if contract is not None and contract.startswith('0x'):
+    a = contract.lower()
+    k = ETHERSCAN_API_KEY
+    url = f'https://api.etherscan.io/api?module=contract&action=getsourcecode&address={a}&apikey={k}'
+    json_response = get(url).json()
+    contract = [x for x in json_response['result'] if 'ContractName' in x][0]
+    return contract
+  else:
+    return {
+      'ContractName': 'unknown'
+    }
 
 def create_table_name(abi):
   return table_prefix + '_event_' + abi['name']
@@ -161,22 +170,40 @@ def abi_to_table_definition(abi, contract_address, parser_type):
     'abi': abi,
     'field_mapping': {}
   }
+
+  def transform_params(params):
+    transformed_params = []
+    for param in params:
+      if param.get('type') == 'tuple' and param.get('components') is not None:
+        transformed_params.append({
+          'name': param.get('name'),
+          'description': '',
+          'type': 'RECORD',
+          'fields': transform_params(param.get('components'))
+        })
+      else:
+        transformed_params.append({
+          'name': param.get('name'),
+          'description': '',
+          'type': 'STRING'  # we sometimes get parsing errors, so safest to make all STRING
+        })
+    return transformed_params
+
   result['table'] = {
     'dataset_name': dataset_name,
     'table_name': table_name,
     'table_description': table_description,
-    'schema': [
-        {
-            'name': x.get('name'),
-            'description': '',
-            'type': 'STRING' # we sometimes get parsing errors, so safest to make all STRING
-        } for x in abi['inputs']
-    ]
+    'schema': transform_params(abi['inputs'])
   }
   return result
 
-def contract_to_table_definitions(contract_address):
-  abi = read_abi_from_address(contract_address)
+def contract_to_table_definitions(contract):
+  if contract is not None and contract.startswith('0x'):
+    contract_address = contract.lower()
+    abi = read_abi_from_address(contract)
+  else:
+    contract_address = 'unknown'
+    abi = json.loads(contract)
 
   result = {}
   for a in filter_by_type(abi, 'event'):
@@ -234,8 +261,15 @@ def get_abi_item_key(abi, abi_item):
       key = abi_item['name'] + '_' + '_'.join(input_types)
   return key
 
-def contract_to_sqls(contract_address):
-  abi = read_abi_from_address(contract_address)
+
+def contract_to_sqls(contract):
+  if contract is not None and contract.startswith('0x'):
+    contract_address = contract.lower()
+    abi = read_abi_from_address(contract_address)
+  else:
+    contract_address = 'unknown'
+    abi = json.loads(contract)
+
 
   event_tpl = Template(SQL_TEMPLATE_FOR_EVENT)
   function_tpl = Template(SQL_TEMPLATE_FOR_FUNCTION)
@@ -272,7 +306,7 @@ def tables(contract):
 
 @app.route('/api/contract/<contract>')
 def contract(contract):
-    c = read_contract_from_address(contract)
+    c = read_contract(contract)
     return jsonify(c)
 
 if __name__ == "__main__":
