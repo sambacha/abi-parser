@@ -1,4 +1,8 @@
+
+from collections import defaultdict
+
 import json
+
 
 from requests import get
 from jinja2 import Template
@@ -17,11 +21,36 @@ CREATE TEMP FUNCTION
   PARSE_LOG(data STRING, topics ARRAY<STRING>)
   RETURNS STRUCT<{{struct_fields}}>
   LANGUAGE js AS """
-    var parsedEvent = {{abi}}
-    return abi.decodeEvent(parsedEvent, data, topics, false);
+    var abi = {{abi}}
+    var interface_instance = new ethers.utils.Interface([abi]);
+    var parsedLog = interface_instance.parseLog({topics: topics, data: data});
+    var parsedValues = parsedLog.values;
+    var transformParams = function(params, abiInputs) {
+      var result = {};
+      if (params && params.length >= abiInputs.length) {
+        for (var i = 0; i < abiInputs.length; i++) {
+          var paramName = abiInputs[i].name;
+          var paramValue = params[i];
+          if (abiInputs[i].type === 'address' && typeof paramValue === 'string') {
+            // For consistency all addresses are lower-cased.
+            paramValue = paramValue.toLowerCase();
+          }
+          if (ethers.utils.Interface.isIndexed(paramValue)) {
+            paramValue = paramValue.hash;
+          }
+          if (abiInputs[i].type === 'tuple' && 'components' in abiInputs[i]) {
+            paramValue = transformParams(paramValue, abiInputs[i].components)
+          }
+          result[paramName] = paramValue;
+        }
+      }
+      return result;
+    };
+    var result = transformParams(parsedValues, abi.inputs);
+    return result;
 """
 OPTIONS
-  ( library="https://storage.googleapis.com/ethlab-183014.appspot.com/ethjs-abi.js" );
+  ( library="gs://blockchain-etl-bigquery/ethers.js" );
 
 WITH parsed_logs AS
 (SELECT
@@ -178,9 +207,11 @@ def contract_to_table_definitions(contract):
 
   result = {}
   for a in filter_by_type(abi, 'event'):
-    result[a['name']] = abi_to_table_definition(a, contract_address, 'log')
+    abi_item_key = get_abi_item_key(abi, a)
+    result[abi_item_key] = abi_to_table_definition(a, contract_address, 'log')
   for a in filter_by_type(abi, 'function'):
-    result[a['name']] = abi_to_table_definition(a, contract_address, 'trace')
+    abi_item_key = get_abi_item_key(abi, a)
+    result[abi_item_key] = abi_to_table_definition(a, contract_address, 'trace')
   return result
 
 
@@ -214,6 +245,23 @@ def abi_to_sql(abi, template, contract_address):
     columns=columns
   )
 
+
+def get_abi_item_key(abi, abi_item):
+  name_counts = defaultdict(int)
+  for a in abi:
+    if 'name' in a:
+      name_counts[a['name']] += 1
+
+  is_ambiguous = name_counts[abi_item['name']] > 1
+
+  key = abi_item['name']
+  if is_ambiguous:
+    input_types = [i['type'] for i in abi_item.get('inputs', [])]
+    if input_types:
+      key = abi_item['name'] + '_' + '_'.join(input_types)
+  return key
+
+
 def contract_to_sqls(contract):
   if contract is not None and contract.startswith('0x'):
     contract_address = contract.lower()
@@ -222,14 +270,17 @@ def contract_to_sqls(contract):
     contract_address = 'unknown'
     abi = json.loads(contract)
 
+
   event_tpl = Template(SQL_TEMPLATE_FOR_EVENT)
   function_tpl = Template(SQL_TEMPLATE_FOR_FUNCTION)
 
   result = {}
   for a in filter_by_type(abi, 'event'):
-    result[a['name']] = abi_to_sql(a, event_tpl, contract_address)
+    abi_item_key = get_abi_item_key(abi, a)
+    result[abi_item_key] = abi_to_sql(a, event_tpl, contract_address)
   for a in filter_by_type(abi, 'function'):
-    result[a['name']] = abi_to_sql(a, function_tpl, contract_address)
+    abi_item_key = get_abi_item_key(abi, a)
+    result[abi_item_key] = abi_to_sql(a, function_tpl, contract_address)
   return result
 
 ### WEB SERVER
