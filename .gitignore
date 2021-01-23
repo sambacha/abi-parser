@@ -1,3 +1,7 @@
+.DS_Store
+node_modules
+*.log
+
 .now/
 .vscode/
 api/__pycache__/
