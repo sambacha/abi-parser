@@ -1,4 +1,3 @@
-
 from collections import defaultdict
 
 import json
@@ -12,9 +11,11 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 
 PORT = 3000
-ETHERSCAN_API_KEY = '6H8VRTDHJVS6II983YY3DN8NCVBBHDA3MX' # should be env var, but whatever
+ETHERSCAN_API_KEY = (
+    "6H8VRTDHJVS6II983YY3DN8NCVBBHDA3MX"  # should be env var, but whatever
+)
 SOLIDITY_TO_BQ_TYPES = {
-  'address': 'STRING',
+    "address": "STRING",
 }
 SQL_TEMPLATE_FOR_EVENT = '''
 CREATE TEMP FUNCTION
@@ -133,181 +134,201 @@ FROM parsed_traces
 app = Flask(__name__)
 CORS(app)
 
-dataset_name = '<INSERT_DATASET_NAME>'
-table_prefix = '<TABLE_PREFIX>'
-table_description = ''
+dataset_name = "<INSERT_DATASET_NAME>"
+table_prefix = "<TABLE_PREFIX>"
+table_description = ""
 
 ### UTILS
 def read_abi_from_address(address):
-  a = address.lower()
-  k = ETHERSCAN_API_KEY
-  url = f'https://api.etherscan.io/api?module=contract&action=getabi&address={a}&apikey={k}'
-  json_response = get(url).json()
-  return loads(json_response['result'])
+    a = address.lower()
+    k = ETHERSCAN_API_KEY
+    url = f"https://api.etherscan.io/api?module=contract&action=getabi&address={a}&apikey={k}"
+    json_response = get(url).json()
+    return loads(json_response["result"])
+
 
 def read_contract(contract):
-  if contract is not None and contract.startswith('0x'):
-    a = contract.lower()
-    k = ETHERSCAN_API_KEY
-    url = f'https://api.etherscan.io/api?module=contract&action=getsourcecode&address={a}&apikey={k}'
-    json_response = get(url).json()
-    contract = [x for x in json_response['result'] if 'ContractName' in x][0]
-    return contract
-  else:
-    return {
-      'ContractName': 'unknown'
-    }
+    if contract is not None and contract.startswith("0x"):
+        a = contract.lower()
+        k = ETHERSCAN_API_KEY
+        url = f"https://api.etherscan.io/api?module=contract&action=getsourcecode&address={a}&apikey={k}"
+        json_response = get(url).json()
+        contract = [x for x in json_response["result"] if "ContractName" in x][0]
+        return contract
+    else:
+        return {"ContractName": "unknown"}
+
 
 def create_table_name(abi):
-  return table_prefix + '_event_' + abi['name']
+    return table_prefix + "_event_" + abi["name"]
+
 
 def abi_to_table_definition(abi, contract_address, parser_type):
-  table_name = create_table_name(abi)
-  result = {}
-  result['parser'] = {
-    'type': parser_type,
-    'contract_address': contract_address,
-    'abi': abi,
-    'field_mapping': {}
-  }
+    table_name = create_table_name(abi)
+    result = {}
+    result["parser"] = {
+        "type": parser_type,
+        "contract_address": contract_address,
+        "abi": abi,
+        "field_mapping": {},
+    }
 
-  def transform_params(params):
-    transformed_params = []
-    for param in params:
-      if param.get('type') == 'tuple' and param.get('components') is not None:
-        transformed_params.append({
-          'name': param.get('name'),
-          'description': '',
-          'type': 'RECORD',
-          'fields': transform_params(param.get('components'))
-        })
-      else:
-        transformed_params.append({
-          'name': param.get('name'),
-          'description': '',
-          'type': 'STRING'  # we sometimes get parsing errors, so safest to make all STRING
-        })
-    return transformed_params
+    def transform_params(params):
+        transformed_params = []
+        for param in params:
+            if param.get("type") == "tuple" and param.get("components") is not None:
+                transformed_params.append(
+                    {
+                        "name": param.get("name"),
+                        "description": "",
+                        "type": "RECORD",
+                        "fields": transform_params(param.get("components")),
+                    }
+                )
+            else:
+                transformed_params.append(
+                    {
+                        "name": param.get("name"),
+                        "description": "",
+                        "type": "STRING",  # we sometimes get parsing errors, so safest to make all STRING
+                    }
+                )
+        return transformed_params
 
-  result['table'] = {
-    'dataset_name': dataset_name,
-    'table_name': table_name,
-    'table_description': table_description,
-    'schema': transform_params(abi['inputs'])
-  }
-  return result
+    result["table"] = {
+        "dataset_name": dataset_name,
+        "table_name": table_name,
+        "table_description": table_description,
+        "schema": transform_params(abi["inputs"]),
+    }
+    return result
+
 
 def contract_to_table_definitions(contract):
-  if contract is not None and contract.startswith('0x'):
-    contract_address = contract.lower()
-    abi = read_abi_from_address(contract)
-  else:
-    contract_address = 'unknown'
-    abi = json.loads(contract)
+    if contract is not None and contract.startswith("0x"):
+        contract_address = contract.lower()
+        abi = read_abi_from_address(contract)
+    else:
+        contract_address = "unknown"
+        abi = json.loads(contract)
 
-  result = {}
-  for a in filter_by_type(abi, 'event'):
-    abi_item_key = get_abi_item_key(abi, a)
-    result[abi_item_key] = abi_to_table_definition(a, contract_address, 'log')
-  for a in filter_by_type(abi, 'function'):
-    abi_item_key = get_abi_item_key(abi, a)
-    result[abi_item_key] = abi_to_table_definition(a, contract_address, 'trace')
-  return result
+    result = {}
+    for a in filter_by_type(abi, "event"):
+        abi_item_key = get_abi_item_key(abi, a)
+        result[abi_item_key] = abi_to_table_definition(a, contract_address, "log")
+    for a in filter_by_type(abi, "function"):
+        abi_item_key = get_abi_item_key(abi, a)
+        result[abi_item_key] = abi_to_table_definition(a, contract_address, "trace")
+    return result
 
 
 def s2bq_type(type):
-  return SOLIDITY_TO_BQ_TYPES.get(type, 'STRING')
+    return SOLIDITY_TO_BQ_TYPES.get(type, "STRING")
+
 
 def filter_by_type(abi, type):
-  for a in abi:
-    if a['type'] == type:
-      yield a
+    for a in abi:
+        if a["type"] == type:
+            yield a
+
 
 def get_columns_from_event_abi(event_abi):
-  return [a.get('name') for a in event_abi['inputs']]
+    return [a.get("name") for a in event_abi["inputs"]]
+
 
 def create_struct_fields_from_event_abi(event_abi):
-  return ', '.join(['`' + a.get('name') + '` ' + s2bq_type(a.get('type')) for a in event_abi['inputs']])
+    return ", ".join(
+        [
+            "`" + a.get("name") + "` " + s2bq_type(a.get("type"))
+            for a in event_abi["inputs"]
+        ]
+    )
+
 
 def abi_to_sql(abi, template, contract_address):
-  if abi['type'] == 'event':
-    selector = '0x' + event_abi_to_log_topic(abi).hex()
-  else:
-    selector = '0x' + function_abi_to_4byte_selector(abi).hex()
+    if abi["type"] == "event":
+        selector = "0x" + event_abi_to_log_topic(abi).hex()
+    else:
+        selector = "0x" + function_abi_to_4byte_selector(abi).hex()
 
-  struct_fields = create_struct_fields_from_event_abi(abi)
-  columns = get_columns_from_event_abi(abi)
-  return template.render(
-    abi=dumps(abi),
-    contract_address=contract_address.lower(),
-    selector=selector,
-    struct_fields=struct_fields,
-    columns=columns
-  )
+    struct_fields = create_struct_fields_from_event_abi(abi)
+    columns = get_columns_from_event_abi(abi)
+    return template.render(
+        abi=dumps(abi),
+        contract_address=contract_address.lower(),
+        selector=selector,
+        struct_fields=struct_fields,
+        columns=columns,
+    )
 
 
 def get_abi_item_key(abi, abi_item):
-  name_counts = defaultdict(int)
-  for a in abi:
-    if 'name' in a:
-      name_counts[a['name']] += 1
+    name_counts = defaultdict(int)
+    for a in abi:
+        if "name" in a:
+            name_counts[a["name"]] += 1
 
-  is_ambiguous = name_counts[abi_item['name']] > 1
+    is_ambiguous = name_counts[abi_item["name"]] > 1
 
-  key = abi_item['name']
-  if is_ambiguous:
-    input_types = [i['type'] for i in abi_item.get('inputs', [])]
-    if input_types:
-      key = abi_item['name'] + '_' + '_'.join(input_types)
-  return key
+    key = abi_item["name"]
+    if is_ambiguous:
+        input_types = [i["type"] for i in abi_item.get("inputs", [])]
+        if input_types:
+            key = abi_item["name"] + "_" + "_".join(input_types)
+    return key
 
 
 def contract_to_sqls(contract):
-  if contract is not None and contract.startswith('0x'):
-    contract_address = contract.lower()
-    abi = read_abi_from_address(contract_address)
-  else:
-    contract_address = 'unknown'
-    abi = json.loads(contract)
+    if contract is not None and contract.startswith("0x"):
+        contract_address = contract.lower()
+        abi = read_abi_from_address(contract_address)
+    else:
+        contract_address = "unknown"
+        abi = json.loads(contract)
 
+    event_tpl = Template(SQL_TEMPLATE_FOR_EVENT)
+    function_tpl = Template(SQL_TEMPLATE_FOR_FUNCTION)
 
-  event_tpl = Template(SQL_TEMPLATE_FOR_EVENT)
-  function_tpl = Template(SQL_TEMPLATE_FOR_FUNCTION)
+    result = {}
+    for a in filter_by_type(abi, "event"):
+        abi_item_key = get_abi_item_key(abi, a)
+        result[abi_item_key] = abi_to_sql(a, event_tpl, contract_address)
+    for a in filter_by_type(abi, "function"):
+        abi_item_key = get_abi_item_key(abi, a)
+        result[abi_item_key] = abi_to_sql(a, function_tpl, contract_address)
+    return result
 
-  result = {}
-  for a in filter_by_type(abi, 'event'):
-    abi_item_key = get_abi_item_key(abi, a)
-    result[abi_item_key] = abi_to_sql(a, event_tpl, contract_address)
-  for a in filter_by_type(abi, 'function'):
-    abi_item_key = get_abi_item_key(abi, a)
-    result[abi_item_key] = abi_to_sql(a, function_tpl, contract_address)
-  return result
 
 ### WEB SERVER
 
-@app.route('/api/')
+
+@app.route("/api/")
 def index():
-    return jsonify({'status': 'alive'})
+    return jsonify({"status": "alive"})
 
-@app.route('/api/test')
+
+@app.route("/api/test")
 def test():
-    return jsonify({'status': 'test'})
+    return jsonify({"status": "test"})
 
 
-@app.route('/api/queries/<contract>')
+@app.route("/api/queries/<contract>")
 def queries(contract):
     queries = contract_to_sqls(contract)
     return jsonify(queries)
 
-@app.route('/api/tables/<contract>')
+
+@app.route("/api/tables/<contract>")
 def tables(contract):
     tables = contract_to_table_definitions(contract)
     return jsonify(tables)
 
-@app.route('/api/contract/<contract>')
+
+@app.route("/api/contract/<contract>")
 def contract(contract):
     c = read_contract(contract)
     return jsonify(c)
 
+
 if __name__ == "__main__":
-    app.run(debug=True, host='127.0.0.1', port=PORT)
+    app.run(debug=True, host="127.0.0.1", port=PORT)
