@@ -10,9 +10,7 @@ export class TableDefinitions extends Component {
       contract,
       queries,
       dataset,
-      name,
       handleChangeDataset,
-      handleChangeContractName
     } = this.props;
     const events = Object.entries(tables).filter(q => q[1].parser.type == 'log');
     const functions = Object.entries(tables).filter(q => q[1].parser.type == 'trace');
@@ -26,8 +24,6 @@ export class TableDefinitions extends Component {
             tables={tables}
             contract={contract}
             dataset={dataset}
-            name={name}
-            handleChangeContractName={handleChangeContractName}
             handleChangeDataset={handleChangeDataset}
           />
         </Card>
