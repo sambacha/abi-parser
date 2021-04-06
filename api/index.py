@@ -1,3 +1,6 @@
+"""
+index
+"""
 from collections import defaultdict
 
 import json
@@ -278,26 +281,43 @@ def get_abi_item_key(abi, abi_item):
     return key
 
 
+
+def get_abi_item_key(abi, abi_item):
+  name_counts = defaultdict(int)
+  for a in abi:
+    if 'name' in a:
+      name_counts[a['name']] += 1
+
+  is_ambiguous = name_counts[abi_item['name']] > 1
+
+  key = abi_item['name']
+  if is_ambiguous:
+    input_types = [i['type'] for i in abi_item.get('inputs', [])]
+    if input_types:
+      key = abi_item['name'] + '_' + '_'.join(input_types)
+  return key
+
+
 def contract_to_sqls(contract):
-    if contract is not None and contract.startswith("0x"):
-        contract_address = contract.lower()
-        abi = read_abi_from_address(contract_address)
-    else:
-        contract_address = "unknown"
-        abi = json.loads(contract)
+  if contract is not None and contract.startswith('0x'):
+    contract_address = contract.lower()
+    abi = read_abi_from_address(contract_address)
+  else:
+    contract_address = 'unknown'
+    abi = json.loads(contract)
 
-    event_tpl = Template(SQL_TEMPLATE_FOR_EVENT)
-    function_tpl = Template(SQL_TEMPLATE_FOR_FUNCTION)
 
-    result = {}
-    for a in filter_by_type(abi, "event"):
-        abi_item_key = get_abi_item_key(abi, a)
-        result[abi_item_key] = abi_to_sql(a, event_tpl, contract_address)
-    for a in filter_by_type(abi, "function"):
-        abi_item_key = get_abi_item_key(abi, a)
-        result[abi_item_key] = abi_to_sql(a, function_tpl, contract_address)
-    return result
+  event_tpl = Template(SQL_TEMPLATE_FOR_EVENT)
+  function_tpl = Template(SQL_TEMPLATE_FOR_FUNCTION)
 
+  result = {}
+  for a in filter_by_type(abi, 'event'):
+    abi_item_key = get_abi_item_key(abi, a)
+    result[abi_item_key] = abi_to_sql(a, event_tpl, contract_address)
+  for a in filter_by_type(abi, 'function'):
+    abi_item_key = get_abi_item_key(abi, a)
+    result[abi_item_key] = abi_to_sql(a, function_tpl, contract_address)
+  return result
 
 ### WEB SERVER
 
