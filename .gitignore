@@ -1,3 +1,111 @@
+.DS_Store
+node_modules
+
 .now/
 .vscode/
 api/__pycache__/
+__pycache__/
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+# Byte-compiled / optimized / DLL files
+*.py[cod]
+*$py.class
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pythonenv*
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+# *.ipr
+# *.iml
+modules.xml
+.idea/misc.xml
+# Logs
+logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+pids
+*.pid
+*.seed
+*.pid.lock
+lib-cov
+coverage
+*.lcov
+# nyc test coverage
+.nyc_output
+# node-waf configuration
+.lock-wscript
+node_modules/
+typings/
+*.tsbuildinfo
+.npm
+.eslintcache
+.stylelintcache
+*.tgz
+.yarn-integrity
+.env.test
+.env*.local
+# Next.js build output
+.next
+# Nuxt.js build / generate output
+.nuxt
+dist
+# Gatsby files
+.cache/
+# TeamCity is a build add-in
+_TeamCity*
+*.coverage
+*.coveragexml
+.localhistory/
